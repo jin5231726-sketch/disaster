@@ -59,13 +59,6 @@ HAZARD_LEVEL_TEXT = {
         "높음": "지진에 상대적으로 취약한 구조(조적조 등)이거나 내진 설계 기준 적용 이전 건물로 추정됩니다. "
                 "강진 시 구조부(기둥, 보) 손상이나 붕괴로 이어질 위험이 있으므로, 대피 경보 즉시 머리를 보호하며 건물 밖으로 대피하세요.",
     },
-    "홍수": {
-        "낮음": "고지대이거나 하천에서 충분히 떨어져 있고 저층부 침수 위험도 낮아, 상대적으로 침수에 안정적인 조건입니다.",
-        "보통": "저지대·하천 인접·저층부 중 일부 조건에 해당해 침수에 다소 취약할 수 있습니다. "
-                "집중호우 예보 시 배수구·저지대 상황을 미리 확인해두는 게 좋습니다.",
-        "높음": "해발고도가 낮거나 하천과 가깝고, 저층부라 침수에 상대적으로 취약한 조건으로 추정됩니다. "
-                "침수 예·경보 발령 시 지하·1층 공간을 피해 신속히 고지대나 상층부로 이동하세요.",
-    },
     "태풍": {
         "낮음": "층수와 경사 조건 모두 양호해, 상대적으로 강풍 피해에 안정적인 조건으로 추정됩니다.",
         "보통": "층수나 경사지 조건 중 일부가 강풍에 다소 취약할 수 있습니다. "
@@ -88,7 +81,7 @@ def describe_hazard(score):
 # -----------------------------
 # 5. 종합 안전성 점수 계산 (2017년 내진기준 강화 반영)
 # -----------------------------
-def evaluate_comprehensive_safety(structure, year, floors, elevation, slope, river_dist):
+def evaluate_comprehensive_safety(structure, year, floors, slope):
     eq_score = 100
     if structure in ["벽돌조", "조적조", "블록조"]:
         eq_score -= 40
@@ -111,20 +104,6 @@ def evaluate_comprehensive_safety(structure, year, floors, elevation, slope, riv
     elif floors >= 6:
         eq_score -= 15
 
-    flood_score = 100
-    if elevation < 15:
-        flood_score -= 40
-    elif elevation < 30:
-        flood_score -= 20
-    if river_dist < 100:
-        flood_score -= 30
-    elif river_dist < 500:
-        flood_score -= 15
-    if floors == 1:
-        flood_score -= 30
-    elif floors <= 3:
-        flood_score -= 15
-
     typhoon_score = 100
     if floors >= 16:
         typhoon_score -= 40
@@ -135,8 +114,8 @@ def evaluate_comprehensive_safety(structure, year, floors, elevation, slope, riv
     if (2026 - year) >= 15:
         typhoon_score -= 30
 
-    eq_score, flood_score, typhoon_score = max(0, eq_score), max(0, flood_score), max(0, typhoon_score)
-    return {"지진점수": eq_score, "홍수점수": flood_score, "태풍점수": typhoon_score}
+    eq_score, typhoon_score = max(0, eq_score), max(0, typhoon_score)
+    return {"지진점수": eq_score, "태풍점수": typhoon_score}
 
 
 # =========================================================
@@ -161,7 +140,7 @@ if address:
         st.error("❌ 주소를 찾을 수 없습니다. 다른 형식으로 다시 입력해보세요.")
     else:
         st.success(f"주소 확인 완료! (위도 {lat:.4f}, 경도 {lon:.4f})")
-        elevation, slope, river_dist = 25.0, 8.5, 350.0  # 임시값: 실서비스 배포 시 실제 GIS API로 교체 필요
+        slope = 8.5  # 임시값: 실서비스 배포 시 실제 GIS API로 교체 필요
 
         st.subheader("2. 건축물 정보 입력")
         col1, col2, col3 = st.columns(3)
@@ -173,20 +152,16 @@ if address:
             floors = st.number_input("층수", min_value=1, max_value=100, value=4, step=1)
 
         if st.button("평가하기", type="primary"):
-            scores = evaluate_comprehensive_safety(structure, int(year), int(floors), elevation, slope, river_dist)
+            scores = evaluate_comprehensive_safety(structure, int(year), int(floors), slope)
 
             eq_level = describe_hazard(scores["지진점수"])
-            flood_level = describe_hazard(scores["홍수점수"])
             typhoon_level = describe_hazard(scores["태풍점수"])
 
             st.subheader("📊 평가 결과")
-            st.caption("⚠️ 간이 추정 모델 결과입니다. 정밀 진단이 아니며 실제 안전 판단의 근거로 쓰지 마세요. 지진·홍수·태풍은 서로 다른 원인이라 하나로 합치지 않고 각각 보여드립니다.")
+            st.caption("⚠️ 간이 추정 모델 결과입니다. 정밀 진단이 아니며 실제 안전 판단의 근거로 쓰지 마세요. 지진·태풍은 서로 다른 원인이라 하나로 합치지 않고 각각 보여드립니다. (홍수 위험은 해발고도 등 실제 지형 데이터가 없어 평가에서 제외했습니다.)")
 
             st.markdown(f"### 🏚️ 지진 위험: **{eq_level}** ({scores['지진점수']}점)")
             st.write(HAZARD_LEVEL_TEXT["지진"][eq_level])
-
-            st.markdown(f"### 🌊 홍수 위험: **{flood_level}** ({scores['홍수점수']}점)")
-            st.write(HAZARD_LEVEL_TEXT["홍수"][flood_level])
 
             st.markdown(f"### 🌀 태풍 위험: **{typhoon_level}** ({scores['태풍점수']}점)")
             st.write(HAZARD_LEVEL_TEXT["태풍"][typhoon_level])
@@ -203,13 +178,13 @@ if address:
             with col_s:
                 st.markdown(f"🚨 **지정 대피소**\n\n[구글맵에서 찾기]({links['shelter']['google']})\n\n[카카오맵에서 찾기]({links['shelter']['kakao']})")
 
-            worst_level = min([scores["지진점수"], scores["홍수점수"], scores["태풍점수"]])
+            worst_level = min(scores["지진점수"], scores["태풍점수"])
             b_color = "green" if worst_level >= 85 else ("orange" if worst_level >= 60 else "red")
             m = folium.Map(location=[lat, lon], zoom_start=15)
             folium.Marker(
                 location=[lat, lon],
                 popup=folium.Popup(
-                    f"<b>지진 {scores['지진점수']}점 · 홍수 {scores['홍수점수']}점 · 태풍 {scores['태풍점수']}점</b>",
+                    f"<b>지진 {scores['지진점수']}점 · 태풍 {scores['태풍점수']}점</b>",
                     max_width=250,
                 ),
                 icon=folium.Icon(color=b_color, icon="home"),
