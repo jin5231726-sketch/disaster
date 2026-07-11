@@ -51,22 +51,43 @@ def build_map_search_links(lat, lon):
         "shelter": {"google": google_shelter, "kakao": kakao_shelter},
     }
 
-def predict_earthquake_scenario(score):
-    if score >= 85:
-        grade = "A등급 (상대적 안전 우수)"
-        before = "입력하신 조건상 구조·연식·경사 요인의 감점이 적은 편입니다."
-        after = ("다른 등급 대비 붕괴 위험이 낮게 추정되나, 이는 몇 가지 변수로 계산한 참고용 점수일 뿐 "
-                 "전문 구조기술사의 내진성능평가를 대체하지 않습니다. 실제 강진 발생 시에도 반드시 대피 매뉴얼에 따라 행동해야 합니다.")
-    elif score >= 60:
-        grade = "B등급 (양호/주의)"
-        before = "노후화가 다소 진행되었거나 과거 내진 기준이 적용되어 보완이 필요할 수 있는 상태입니다."
-        after = ("강한 흔들림 발생 시 천장 마감재, 조명 기구의 낙하 위험이 있습니다. 외벽 균열이 발생할 수 있으므로, "
-                 "지진 직후 책상 밑으로 신속히 대피한 뒤 계단을 통해 공터로 즉시 탈출해야 합니다.")
+def predict_disaster_scenario(eq_score, flood_score, typhoon_score):
+    """종합점수를 끌어내린 실제 원인(지진/홍수/태풍 중 가장 낮은 항목)에 맞는 설명을 반환한다."""
+    overall = min(eq_score, flood_score, typhoon_score)
+
+    # 가장 낮은 점수를 만든 재해 유형을 우선순위(지진>홍수>태풍)로 판단
+    if eq_score == overall:
+        hazard = "지진"
+    elif flood_score == overall:
+        hazard = "홍수"
     else:
-        grade = "X등급 (붕괴 위험 고조)"
-        before = "지진에 취약한 구조(조적조 등)이거나 내진 설계 기준 적용 이전 건물로 추정됩니다."
-        after = ("구조부(기둥, 보)에 손상이 생겨 붕괴로 이어질 위험이 상대적으로 높게 추정됩니다. 탈출로가 차단될 수 있으므로, "
-                 "대피 경보 즉시 머리를 보호하며 건물 밖으로 대피하는 것을 우선 고려해야 합니다.")
+        hazard = "태풍"
+
+    if overall >= 85:
+        grade = "A등급 (상대적 안전 우수)"
+        before = "입력하신 조건상 구조·연식·경사·지형 요인의 감점이 전반적으로 적은 편입니다."
+        after = ("지진·홍수·태풍 모든 항목에서 붕괴·침수·강풍 피해 위험이 낮게 추정되나, 이는 몇 가지 변수로 계산한 참고용 점수일 뿐 "
+                 "전문 기관의 정밀 진단을 대체하지 않습니다. 실제 재난 발생 시에도 반드시 대피 매뉴얼에 따라 행동해야 합니다.")
+        return grade, before, after
+
+    if overall >= 60:
+        grade = "B등급 (양호/주의)"
+    else:
+        grade = "X등급 (붕괴/피해 위험 고조)"
+
+    if hazard == "지진":
+        before = "지진에 상대적으로 취약한 구조(조적조 등)이거나 내진 설계 기준 적용 이전 건물로 추정됩니다."
+        after = ("강진 발생 시 구조부(기둥, 보) 손상 또는 붕괴로 이어질 위험이 다른 재해 항목보다 높게 추정됩니다. "
+                 "탈출로가 차단될 수 있으므로 대피 경보 즉시 머리를 보호하며 건물 밖으로 대피하는 것을 우선 고려해야 합니다.")
+    elif hazard == "홍수":
+        before = "해발고도가 낮거나 하천과 가깝고, 저층부라 침수에 상대적으로 취약한 조건으로 추정됩니다."
+        after = ("집중호우·하천 범람 시 저층부 침수 위험이 다른 재해 항목보다 높게 추정됩니다. "
+                 "침수 예·경보 발령 시 지하·1층 공간을 피해 신속히 고지대나 상층부로 이동해야 합니다.")
+    else:  # 태풍
+        before = "층수가 높거나 경사지에 위치해, 강풍에 상대적으로 취약한 조건으로 추정됩니다."
+        after = ("강한 태풍 발생 시 창문 파손, 외장재 낙하, 고층부 흔들림 위험이 다른 재해 항목보다 높게 추정됩니다. "
+                 "태풍 특보 시 창가에서 떨어져 있고, 외출을 자제하며 유리창에 테이프나 커튼으로 보강하는 것이 좋습니다.")
+
     return grade, before, after
 
 
@@ -162,7 +183,9 @@ if address:
 
         if st.button("평가하기", type="primary"):
             scores = evaluate_comprehensive_safety(structure, int(year), int(floors), elevation, slope, river_dist)
-            grade, before, after = predict_earthquake_scenario(scores["종합점수"])
+            grade, before, after = predict_disaster_scenario(
+                scores["지진점수"], scores["홍수점수"], scores["태풍점수"]
+            )
 
             st.subheader("📊 평가 결과")
             st.caption("⚠️ 간이 추정 모델 결과입니다. 정밀 진단이 아니며 실제 안전 판단의 근거로 쓰지 마세요.")
