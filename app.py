@@ -1,8 +1,6 @@
 import math
 import json
-import time
 import urllib.request
-import urllib.parse
 
 import streamlit as st
 import folium
@@ -50,63 +48,22 @@ def haversine_m(lat1, lon1, lat2, lon2):
     return 2 * R * math.asin(min(1, math.sqrt(a)))
 
 
-# Nominatim(주소 검색 서버)의 카테고리 검색 기능을 이용해 주변 병원/경찰서를 조회한다.
-# (Overpass API는 클라우드 서버 IP를 자주 차단/타임아웃 시켜서 안정성이 낮아 Nominatim으로 교체)
-# Nominatim 이용 정책상 최소 1초 간격을 두고 요청해야 한다.
-def search_nominatim_category(lat, lon, keyword, delta_deg=0.03, limit=5):
-    left, right = lon - delta_deg, lon + delta_deg
-    top, bottom = lat + delta_deg, lat - delta_deg
-    params = {
-        "format": "json",
-        "q": keyword,
-        "viewbox": f"{left},{top},{right},{bottom}",
-        "bounded": "1",
-        "limit": str(limit),
+# [교체] 카카오맵 -> Overpass -> Nominatim 순으로 시도했지만 전부 클라우드 서버 IP를 차단해서
+# 계속 403/타임아웃이 발생했다. 그래서 프로그램이 대신 검색해주는 대신,
+# 구글맵/카카오맵 "검색 링크"를 만들어 사용자가 직접 클릭해서 확인하도록 바꾼다.
+# API 호출이 아예 없으므로 차단/타임아웃 걱정이 없고, 실시간 정확도도 가장 높다.
+def build_map_search_links(lat, lon):
+    google_hospital = f"https://www.google.com/maps/search/병원/@{lat},{lon},16z"
+    google_police = f"https://www.google.com/maps/search/경찰서/@{lat},{lon},16z"
+    google_shelter = f"https://www.google.com/maps/search/대피소/@{lat},{lon},16z"
+    kakao_hospital = f"https://map.kakao.com/?q=병원&urlX={lon}&urlY={lat}"
+    kakao_police = f"https://map.kakao.com/?q=경찰서&urlX={lon}&urlY={lat}"
+    kakao_shelter = f"https://map.kakao.com/?q=대피소&urlX={lon}&urlY={lat}"
+    return {
+        "hospital": {"google": google_hospital, "kakao": kakao_hospital},
+        "police": {"google": google_police, "kakao": kakao_police},
+        "shelter": {"google": google_shelter, "kakao": kakao_shelter},
     }
-    url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(params)
-    headers = {"User-Agent": "disaster_safety_webapp_v1 (contact: streamlit-app-demo@example.com)"}
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=10) as response:
-        data = json.loads(response.read().decode())
-
-    results = []
-    for item in data:
-        display_name = item.get("display_name", "이름 미상 시설")
-        short_name = display_name.split(",")[0]
-        results.append({"이름": short_name, "위도": float(item["lat"]), "경도": float(item["lon"])})
-    return results
-
-
-@st.cache_data(show_spinner=False)
-def find_all_nearby_facilities(lat, lon):
-    """Nominatim으로 병원/경찰서를 순차 조회한다 (요청 사이 1초 간격, 이용 정책 준수)."""
-    hospitals, police = [], []
-
-    try:
-        hospitals = search_nominatim_category(lat, lon, "hospital")
-    except Exception as e:
-        st.warning(f"병원 검색 실패: {e}")
-
-    time.sleep(1)  # Nominatim 이용 정책: 최소 1초 간격
-
-    try:
-        police = search_nominatim_category(lat, lon, "police station")
-    except Exception as e:
-        st.warning(f"경찰서 검색 실패: {e}")
-
-    # 대피소는 Nominatim에 표준화된 카테고리가 없어 신뢰도가 낮으므로 비워두고,
-    # 화면에서 지자체 공식 자료 확인을 안내한다.
-    shelters = []
-
-    return hospitals, police, shelters
-
-
-def find_closest(user_lat, user_lon, facilities):
-    if not facilities:
-        return None
-    best = min(facilities, key=lambda f: haversine_m(user_lat, user_lon, f["위도"], f["경도"]))
-    dist = haversine_m(user_lat, user_lon, best["위도"], best["경도"])
-    return {"이름": best["이름"], "거리": round(dist, 1), "위도": best["위도"], "경도": best["경도"]}
 
 def predict_earthquake_scenario(score):
     if score >= 85:
@@ -228,21 +185,17 @@ if address:
             st.write(f"**현재 상태 추정**: {before}")
             st.write(f"**지진 시 상황 예측**: {after}")
 
-            st.subheader("🏃 주변 구호 기관 (OpenStreetMap/Nominatim 데이터 기반)")
-            with st.spinner("주변 병원/경찰서 실시간 조회 중..."):
-                hospitals, police, shelters = find_all_nearby_facilities(lat, lon)
+            st.subheader("🏃 주변 구호 기관 찾기")
+            st.caption("아래 버튼을 누르면 지도 앱에서 실시간으로 가장 정확한 위치를 바로 확인할 수 있습니다.")
+            links = build_map_search_links(lat, lon)
 
-            closest_hospital = find_closest(lat, lon, hospitals)
-            closest_police = find_closest(lat, lon, police)
-            closest_shelter = find_closest(lat, lon, shelters)
-
-            hospital_text = f"{closest_hospital['이름']} ({closest_hospital['거리']}m)" if closest_hospital else "반경 내 조회 결과 없음"
-            police_text = f"{closest_police['이름']} ({closest_police['거리']}m)" if closest_police else "반경 내 조회 결과 없음"
-            shelter_text = f"{closest_shelter['이름']} ({closest_shelter['거리']}m)" if closest_shelter else "반경 내 조회 결과 없음 (지자체 공식 자료 확인 권장)"
-
-            st.write(f"🏥 응급 의료원: {hospital_text}")
-            st.write(f"🚔 치안/구조처: {police_text}")
-            st.write(f"🚨 지정 대피소: {shelter_text}")
+            col_h, col_p, col_s = st.columns(3)
+            with col_h:
+                st.markdown(f"🏥 **응급 의료원**\n\n[구글맵에서 찾기]({links['hospital']['google']})\n\n[카카오맵에서 찾기]({links['hospital']['kakao']})")
+            with col_p:
+                st.markdown(f"🚔 **치안/구조처**\n\n[구글맵에서 찾기]({links['police']['google']})\n\n[카카오맵에서 찾기]({links['police']['kakao']})")
+            with col_s:
+                st.markdown(f"🚨 **지정 대피소**\n\n[구글맵에서 찾기]({links['shelter']['google']})\n\n[카카오맵에서 찾기]({links['shelter']['kakao']})")
 
             b_color = "green" if scores["종합점수"] >= 85 else ("orange" if scores["종합점수"] >= 60 else "red")
             m = folium.Map(location=[lat, lon], zoom_start=15)
@@ -251,11 +204,5 @@ if address:
                 popup=folium.Popup(f"<b>대상 건물 안전 추정 점수: {scores['종합점수']}점</b><br>{grade}", max_width=250),
                 icon=folium.Icon(color=b_color, icon="home"),
             ).add_to(m)
-            for f in shelters:
-                folium.Marker([f["위도"], f["경도"]], popup=f["이름"], icon=folium.Icon(color="blue", icon="info-sign")).add_to(m)
-            for f in hospitals:
-                folium.Marker([f["위도"], f["경도"]], popup=f"🏥 {f['이름']}", icon=folium.Icon(color="red", icon="medical")).add_to(m)
-            for f in police:
-                folium.Marker([f["위도"], f["경도"]], popup=f"🚔 {f['이름']}", icon=folium.Icon(color="cadetblue", icon="shield")).add_to(m)
 
             st_html(m._repr_html_(), height=500)
