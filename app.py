@@ -150,7 +150,6 @@ if address:
     else:
         st.success(f"주소 확인 완료! (위도 {lat:.4f}, 경도 {lon:.4f})")
         elevation, slope, river_dist = 25.0, 8.5, 350.0  # 임시값: 실서비스 배포 시 실제 GIS API로 교체 필요
-        st.info(f"지형 조건은 현재 임시값으로 계산됩니다 (해발고도 {elevation}m, 경사도 {slope}°, 하천거리 {river_dist}m)")
 
         st.subheader("2. 건축물 정보 입력")
         col1, col2, col3 = st.columns(3)
