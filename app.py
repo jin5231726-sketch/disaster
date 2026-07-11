@@ -20,20 +20,6 @@ def get_coordinates(address):
     return None, None
 
 
-# -----------------------------
-# 2. 해발고도 자동 조회
-# -----------------------------
-@st.cache_data(show_spinner=False)
-def get_automated_elevation(lat, lon):
-    try:
-        url = f"https://api.open-elevation.com/v1/by-locations?locations={lat},{lon}"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.loads(response.read().decode())
-            return float(data['results'][0]['elevation'])
-    except Exception:
-        return 25.0
-
 
 # -----------------------------
 # 3. 실제 주변 시설(병원/경찰서) OSM Overpass API 조회
@@ -90,25 +76,25 @@ def predict_earthquake_scenario(score):
 def evaluate_comprehensive_safety(structure, year, floors, elevation, slope, river_dist):
     eq_score = 100
     if structure in ["벽돌조", "조적조", "블록조"]:
-        eq_score -= 30
+        eq_score -= 40
     elif structure in ["목조", "황토구조"]:
-        eq_score -= 15
+        eq_score -= 25
 
     if year < 1988:
-        eq_score -= 30
+        eq_score -= 55   # 내진설계 의무화 이전 - 내진 개념 자체가 없던 시기
     elif year < 2000:
-        eq_score -= 20
+        eq_score -= 35   # 초기 내진기준(약한 기준) 적용 구간
     elif year < 2017:
-        eq_score -= 10
+        eq_score -= 15   # 2017 포항지진 이전, 현행 기준보다 약한 기준 적용 구간
 
     if slope >= 25:
         eq_score -= 20
     elif slope >= 10:
         eq_score -= 10
     if floors >= 16:
-        eq_score -= 20
+        eq_score -= 25
     elif floors >= 6:
-        eq_score -= 10
+        eq_score -= 15
 
     flood_score = 100
     if elevation < 15:
@@ -146,7 +132,12 @@ def evaluate_comprehensive_safety(structure, year, floors, elevation, slope, riv
 # =========================================================
 st.set_page_config(page_title="재난 안전성 평가 시스템", page_icon="🚨", layout="centered")
 st.title("🚨 건물 재난 안전성 평가 및 구호 기관 안내")
-st.caption("이 점수는 참고용 추정치이며 전문 구조기술사의 내진성능평가를 대체하지 않습니다.")
+st.warning(
+    "⚠️ **이 앱은 간이 추정 모델입니다.** 몇 가지 변수(구조/연식/층수/경사 등)를 바탕으로 만든 "
+    "**참고용·교육용 점수**이며, 정밀한 공학적 계산이나 정부 고시 기준을 따른 것이 아닙니다. "
+    "실제 건물의 내진 안전성은 지자체의 내진성능평가 제도나 전문 구조기술사의 진단을 통해 확인하세요. "
+    "이 점수만으로 안전/위험 여부를 최종 판단하지 마세요."
+)
 
 address = st.text_input("1. 분석할 건물 주소를 입력하세요", placeholder="예: 서울특별시 종로구 세종대로 1")
 
@@ -158,9 +149,8 @@ if address:
         st.error("❌ 주소를 찾을 수 없습니다. 다른 형식으로 다시 입력해보세요.")
     else:
         st.success(f"주소 확인 완료! (위도 {lat:.4f}, 경도 {lon:.4f})")
-        elevation = get_automated_elevation(lat, lon)
-        slope, river_dist = 8.5, 350.0  # 임시값: 실서비스 배포 시 실제 GIS API로 교체 필요
-        st.info(f"해발고도: {elevation:.1f}m  ｜  경사도·하천거리는 현재 임시값입니다 ({slope}°, {river_dist}m)")
+        elevation, slope, river_dist = 25.0, 8.5, 350.0  # 임시값: 실서비스 배포 시 실제 GIS API로 교체 필요
+        st.info(f"지형 조건은 현재 임시값으로 계산됩니다 (해발고도 {elevation}m, 경사도 {slope}°, 하천거리 {river_dist}m)")
 
         st.subheader("2. 건축물 정보 입력")
         col1, col2, col3 = st.columns(3)
@@ -176,6 +166,7 @@ if address:
             grade, before, after = predict_earthquake_scenario(scores["종합점수"])
 
             st.subheader("📊 평가 결과")
+            st.caption("⚠️ 간이 추정 모델 결과입니다. 정밀 진단이 아니며 실제 안전 판단의 근거로 쓰지 마세요.")
             c1, c2, c3 = st.columns(3)
             c1.metric("지진 점수", f"{scores['지진점수']}점")
             c2.metric("홍수 점수", f"{scores['홍수점수']}점")
