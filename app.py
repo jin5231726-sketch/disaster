@@ -51,44 +51,38 @@ def build_map_search_links(lat, lon):
         "shelter": {"google": google_shelter, "kakao": kakao_shelter},
     }
 
-def predict_disaster_scenario(eq_score, flood_score, typhoon_score):
-    """종합점수를 끌어내린 실제 원인(지진/홍수/태풍 중 가장 낮은 항목)에 맞는 설명을 반환한다."""
-    overall = min(eq_score, flood_score, typhoon_score)
+HAZARD_LEVEL_TEXT = {
+    "지진": {
+        "낮음": "구조·연식·층수·경사 요인의 감점이 적어, 상대적으로 지진에 안정적인 조건으로 추정됩니다.",
+        "보통": "노후화가 다소 진행되었거나 과거(약한) 내진 기준이 적용되어 보완이 필요할 수 있는 상태입니다. "
+                "강한 흔들림 시 마감재·조명기구 낙하 위험이 있으니, 책상 밑 대피 후 계단으로 신속히 밖으로 나가야 합니다.",
+        "높음": "지진에 상대적으로 취약한 구조(조적조 등)이거나 내진 설계 기준 적용 이전 건물로 추정됩니다. "
+                "강진 시 구조부(기둥, 보) 손상이나 붕괴로 이어질 위험이 있으므로, 대피 경보 즉시 머리를 보호하며 건물 밖으로 대피하세요.",
+    },
+    "홍수": {
+        "낮음": "고지대이거나 하천에서 충분히 떨어져 있고 저층부 침수 위험도 낮아, 상대적으로 침수에 안정적인 조건입니다.",
+        "보통": "저지대·하천 인접·저층부 중 일부 조건에 해당해 침수에 다소 취약할 수 있습니다. "
+                "집중호우 예보 시 배수구·저지대 상황을 미리 확인해두는 게 좋습니다.",
+        "높음": "해발고도가 낮거나 하천과 가깝고, 저층부라 침수에 상대적으로 취약한 조건으로 추정됩니다. "
+                "침수 예·경보 발령 시 지하·1층 공간을 피해 신속히 고지대나 상층부로 이동하세요.",
+    },
+    "태풍": {
+        "낮음": "층수와 경사 조건 모두 양호해, 상대적으로 강풍 피해에 안정적인 조건으로 추정됩니다.",
+        "보통": "층수나 경사지 조건 중 일부가 강풍에 다소 취약할 수 있습니다. "
+                "태풍 특보 시 창문 주변 물건을 미리 정리해두는 게 좋습니다.",
+        "높음": "층수가 높거나 경사지에 위치해, 강풍에 상대적으로 취약한 조건으로 추정됩니다. "
+                "강한 태풍 시 창문 파손·외장재 낙하·고층부 흔들림 위험이 있으니, 창가에서 떨어져 있고 외출을 자제하세요.",
+    },
+}
 
-    # 가장 낮은 점수를 만든 재해 유형을 우선순위(지진>홍수>태풍)로 판단
-    if eq_score == overall:
-        hazard = "지진"
-    elif flood_score == overall:
-        hazard = "홍수"
+
+def describe_hazard(score):
+    if score >= 85:
+        return "낮음"
+    elif score >= 60:
+        return "보통"
     else:
-        hazard = "태풍"
-
-    if overall >= 85:
-        grade = "A등급 (상대적 안전 우수)"
-        before = "입력하신 조건상 구조·연식·경사·지형 요인의 감점이 전반적으로 적은 편입니다."
-        after = ("지진·홍수·태풍 모든 항목에서 붕괴·침수·강풍 피해 위험이 낮게 추정되나, 이는 몇 가지 변수로 계산한 참고용 점수일 뿐 "
-                 "전문 기관의 정밀 진단을 대체하지 않습니다. 실제 재난 발생 시에도 반드시 대피 매뉴얼에 따라 행동해야 합니다.")
-        return grade, before, after
-
-    if overall >= 60:
-        grade = "B등급 (양호/주의)"
-    else:
-        grade = "X등급 (붕괴/피해 위험 고조)"
-
-    if hazard == "지진":
-        before = "지진에 상대적으로 취약한 구조(조적조 등)이거나 내진 설계 기준 적용 이전 건물로 추정됩니다."
-        after = ("강진 발생 시 구조부(기둥, 보) 손상 또는 붕괴로 이어질 위험이 다른 재해 항목보다 높게 추정됩니다. "
-                 "탈출로가 차단될 수 있으므로 대피 경보 즉시 머리를 보호하며 건물 밖으로 대피하는 것을 우선 고려해야 합니다.")
-    elif hazard == "홍수":
-        before = "해발고도가 낮거나 하천과 가깝고, 저층부라 침수에 상대적으로 취약한 조건으로 추정됩니다."
-        after = ("집중호우·하천 범람 시 저층부 침수 위험이 다른 재해 항목보다 높게 추정됩니다. "
-                 "침수 예·경보 발령 시 지하·1층 공간을 피해 신속히 고지대나 상층부로 이동해야 합니다.")
-    else:  # 태풍
-        before = "층수가 높거나 경사지에 위치해, 강풍에 상대적으로 취약한 조건으로 추정됩니다."
-        after = ("강한 태풍 발생 시 창문 파손, 외장재 낙하, 고층부 흔들림 위험이 다른 재해 항목보다 높게 추정됩니다. "
-                 "태풍 특보 시 창가에서 떨어져 있고, 외출을 자제하며 유리창에 테이프나 커튼으로 보강하는 것이 좋습니다.")
-
-    return grade, before, after
+        return "높음"
 
 
 # -----------------------------
@@ -142,10 +136,7 @@ def evaluate_comprehensive_safety(structure, year, floors, elevation, slope, riv
         typhoon_score -= 30
 
     eq_score, flood_score, typhoon_score = max(0, eq_score), max(0, flood_score), max(0, typhoon_score)
-    return {
-        "지진점수": eq_score, "홍수점수": flood_score, "태풍점수": typhoon_score,
-        "종합점수": min(eq_score, flood_score, typhoon_score)
-    }
+    return {"지진점수": eq_score, "홍수점수": flood_score, "태풍점수": typhoon_score}
 
 
 # =========================================================
@@ -183,20 +174,22 @@ if address:
 
         if st.button("평가하기", type="primary"):
             scores = evaluate_comprehensive_safety(structure, int(year), int(floors), elevation, slope, river_dist)
-            grade, before, after = predict_disaster_scenario(
-                scores["지진점수"], scores["홍수점수"], scores["태풍점수"]
-            )
+
+            eq_level = describe_hazard(scores["지진점수"])
+            flood_level = describe_hazard(scores["홍수점수"])
+            typhoon_level = describe_hazard(scores["태풍점수"])
 
             st.subheader("📊 평가 결과")
-            st.caption("⚠️ 간이 추정 모델 결과입니다. 정밀 진단이 아니며 실제 안전 판단의 근거로 쓰지 마세요.")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("지진 점수", f"{scores['지진점수']}점")
-            c2.metric("홍수 점수", f"{scores['홍수점수']}점")
-            c3.metric("태풍 점수", f"{scores['태풍점수']}점")
+            st.caption("⚠️ 간이 추정 모델 결과입니다. 정밀 진단이 아니며 실제 안전 판단의 근거로 쓰지 마세요. 지진·홍수·태풍은 서로 다른 원인이라 하나로 합치지 않고 각각 보여드립니다.")
 
-            st.markdown(f"### ⭐ 종합 등급: {grade} (종합 점수 {scores['종합점수']}점)")
-            st.write(f"**현재 상태 추정**: {before}")
-            st.write(f"**지진 시 상황 예측**: {after}")
+            st.markdown(f"### 🏚️ 지진 위험: **{eq_level}** ({scores['지진점수']}점)")
+            st.write(HAZARD_LEVEL_TEXT["지진"][eq_level])
+
+            st.markdown(f"### 🌊 홍수 위험: **{flood_level}** ({scores['홍수점수']}점)")
+            st.write(HAZARD_LEVEL_TEXT["홍수"][flood_level])
+
+            st.markdown(f"### 🌀 태풍 위험: **{typhoon_level}** ({scores['태풍점수']}점)")
+            st.write(HAZARD_LEVEL_TEXT["태풍"][typhoon_level])
 
             st.subheader("🏃 주변 구호 기관 찾기")
             st.caption("아래 버튼을 누르면 지도 앱에서 실시간으로 가장 정확한 위치를 바로 확인할 수 있습니다.")
@@ -210,11 +203,15 @@ if address:
             with col_s:
                 st.markdown(f"🚨 **지정 대피소**\n\n[구글맵에서 찾기]({links['shelter']['google']})\n\n[카카오맵에서 찾기]({links['shelter']['kakao']})")
 
-            b_color = "green" if scores["종합점수"] >= 85 else ("orange" if scores["종합점수"] >= 60 else "red")
+            worst_level = min([scores["지진점수"], scores["홍수점수"], scores["태풍점수"]])
+            b_color = "green" if worst_level >= 85 else ("orange" if worst_level >= 60 else "red")
             m = folium.Map(location=[lat, lon], zoom_start=15)
             folium.Marker(
                 location=[lat, lon],
-                popup=folium.Popup(f"<b>대상 건물 안전 추정 점수: {scores['종합점수']}점</b><br>{grade}", max_width=250),
+                popup=folium.Popup(
+                    f"<b>지진 {scores['지진점수']}점 · 홍수 {scores['홍수점수']}점 · 태풍 {scores['태풍점수']}점</b>",
+                    max_width=250,
+                ),
                 icon=folium.Icon(color=b_color, icon="home"),
             ).add_to(m)
 
